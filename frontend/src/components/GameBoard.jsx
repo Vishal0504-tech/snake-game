@@ -8,11 +8,13 @@ export default function GameBoard() {
   const [gameState, setGameState] = useState({ players: {}, food: {} });
   const [gameOver, setGameOver] = useState(false);
   const [finalScore, setFinalScore] = useState(0);
+  const [playerId, setPlayerId] = useState(null);
 
   // Handle game state updates
   useEffect(() => {
     if (!socket) return;
 
+    socket.on("init", (id) => setPlayerId(id)); // backend sends playerId when joining
     socket.on("gameState", (state) => setGameState(state));
 
     socket.on("gameOver", (score) => {
@@ -21,6 +23,7 @@ export default function GameBoard() {
     });
 
     return () => {
+      socket.off("init");
       socket.off("gameState");
       socket.off("gameOver");
     };
@@ -52,7 +55,7 @@ export default function GameBoard() {
   };
 
   return (
-    <div className="relative">
+    <div className="flex flex-col items-center">
       {gameOver ? (
         <div className="flex flex-col items-center justify-center h-screen bg-black text-white">
           <h1 className="text-3xl font-bold mb-4">Game Over</h1>
@@ -65,40 +68,69 @@ export default function GameBoard() {
           </button>
         </div>
       ) : (
-        <div
-          className="grid"
-          style={{
-            gridTemplateColumns: `repeat(${GRID_SIZE}, 20px)`,
-            gridTemplateRows: `repeat(${GRID_SIZE}, 20px)`,
-            gap: "1px",
-            background: "#222",
-            padding: "5px",
-          }}
-        >
-          {Array.from({ length: GRID_SIZE * GRID_SIZE }).map((_, index) => {
-            const x = index % GRID_SIZE;
-            const y = Math.floor(index / GRID_SIZE);
+        <>
+          {/* Leaderboard */}
+          <div className="mb-4 text-white">
+            <h2 className="text-xl font-bold mb-2">Leaderboard</h2>
+            <ul>
+              {Object.values(gameState.players)
+                .sort((a, b) => b.score - a.score)
+                .map((p, i) => (
+                  <li
+                    key={i}
+                    className={`${
+                      p.id === playerId ? "text-yellow-400 font-bold" : ""
+                    }`}
+                  >
+                    {p.name}: {p.score}
+                  </li>
+                ))}
+            </ul>
+          </div>
 
-            let cellColor = "#111";
-            for (const id in gameState.players) {
-              gameState.players[id].snake.forEach((segment, idx) => {
-                if (segment.x === x && segment.y === y) {
-                  cellColor = idx === 0 ? "white" : gameState.players[id].color;
-                }
-              });
-            }
-            if (gameState.food?.x === x && gameState.food?.y === y) {
-              cellColor = "red";
-            }
+          {/* Game Grid */}
+          <div
+            className="grid"
+            style={{
+              gridTemplateColumns: `repeat(${GRID_SIZE}, 20px)`,
+              gridTemplateRows: `repeat(${GRID_SIZE}, 20px)`,
+              gap: "1px",
+              background: "#222",
+              padding: "5px",
+            }}
+          >
+            {Array.from({ length: GRID_SIZE * GRID_SIZE }).map((_, index) => {
+              const x = index % GRID_SIZE;
+              const y = Math.floor(index / GRID_SIZE);
 
-            return (
-              <div
-                key={index}
-                style={{ width: 20, height: 20, backgroundColor: cellColor }}
-              />
-            );
-          })}
-        </div>
+              let cellColor = "#111";
+              for (const id in gameState.players) {
+                const player = gameState.players[id];
+                player.snake.forEach((segment, idx) => {
+                  if (segment.x === x && segment.y === y) {
+                    if (idx === 0) {
+                      // head
+                      cellColor =
+                        id === playerId ? "#FFD700" : "white"; // current player's head = gold
+                    } else {
+                      cellColor = player.color;
+                    }
+                  }
+                });
+              }
+              if (gameState.food?.x === x && gameState.food?.y === y) {
+                cellColor = "red";
+              }
+
+              return (
+                <div
+                  key={index}
+                  style={{ width: 20, height: 20, backgroundColor: cellColor }}
+                />
+              );
+            })}
+          </div>
+        </>
       )}
     </div>
   );

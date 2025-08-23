@@ -2,15 +2,24 @@ const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const mongoose = require("mongoose");
+const cors = require("cors");
 require("dotenv").config();
+const path = require("path");
 
+// __dirname is already available in CommonJS, no need to redeclare it!
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
+// CORS for API (only in dev)
+if (process.env.NODE_ENV !== "production") {
+  app.use(cors({ origin: "http://localhost:5173" }));
+}
+
 // ===== MongoDB (Leaderboard persistence) =====
-mongoose.connect(process.env.MONGO_URI)
+mongoose
+  .connect(process.env.MONGO_URI)
   .then(() => console.log("✅ MongoDB connected"))
   .catch((err) => console.error("MongoDB error:", err));
 
@@ -72,7 +81,9 @@ setInterval(async () => {
 
     // ===== GAME OVER: hit self =====
     if (
-      player.snake.some((segment) => segment.x === head.x && segment.y === head.y)
+      player.snake.some(
+        (segment) => segment.x === head.x && segment.y === head.y
+      )
     ) {
       console.log(`💀 ${player.name} bit itself!`);
       io.to(id).emit("gameOver", player.score);
@@ -92,7 +103,11 @@ setInterval(async () => {
     for (const otherId in players) {
       if (otherId === id) continue;
       const other = players[otherId];
-      if (other.snake.some((segment) => segment.x === head.x && segment.y === head.y)) {
+      if (
+        other.snake.some(
+          (segment) => segment.x === head.x && segment.y === head.y
+        )
+      ) {
         console.log(`💀 ${player.name} collided with ${other.name}!`);
         io.to(id).emit("gameOver", player.score);
 
@@ -171,8 +186,41 @@ io.on("connection", (socket) => {
   });
 });
 
+// ===== Serve frontend in production =====
+if (process.env.NODE_ENV === "production") {
+  app.use(express.static(path.join(__dirname, "../frontend/dist")));
+  app.get("*", (req, res) => {
+    res.sendFile(path.join(__dirname, "../frontend", "dist", "index.html"));
+  });
+}
+
 // ===== Start Server =====
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 4000;
+
+app.get("/", (req, res) => {
+  res.send("API is running...");
+});
+
+app.get("/api/leaderboard", async (req, res) => {
+  try {
+    const leaderboard = await Player.find().sort({ score: -1 }).limit(10);
+    res.json(leaderboard);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch leaderboard" });
+  }
+});
+
+app.get("/api/players", (req, res) => {
+  const activePlayers = Object.values(players).map((p) => ({
+    name: p.name,
+    score: p.score,
+    color: p.color,
+  }));
+  res.json(activePlayers);
+});
+
 server.listen(PORT, () =>
   console.log(`🚀 Server running on http://localhost:${PORT}`)
 );
+
+
