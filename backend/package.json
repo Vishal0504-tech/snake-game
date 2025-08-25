@@ -18,5 +18,8 @@
     "mongoose": "^8.17.1",
     "snake-game": "file:..",
     "socket.io": "^4.8.1"
+},
+  "engines": {
+    "node": "18.x"
   }
 }
