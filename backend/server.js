@@ -6,13 +6,11 @@ const cors = require("cors");
 require("dotenv").config();
 const path = require("path");
 
-// __dirname is already available in CommonJS, no need to redeclare it!
-
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
-// CORS for API (only in dev)
+// CORS for local development
 if (process.env.NODE_ENV !== "production") {
   app.use(cors({ origin: "http://localhost:5173" }));
 }
@@ -59,64 +57,45 @@ setInterval(async () => {
     if (player.dir === "LEFT") head.x -= 1;
     if (player.dir === "RIGHT") head.x += 1;
 
-    // ===== GAME OVER: hit wall =====
-    if (
-      head.x < 0 ||
-      head.x >= GRID_SIZE ||
-      head.y < 0 ||
-      head.y >= GRID_SIZE
-    ) {
+    // Hit wall
+    if (head.x < 0 || head.x >= GRID_SIZE || head.y < 0 || head.y >= GRID_SIZE) {
       console.log(`💀 ${player.name} hit the wall!`);
       io.to(id).emit("gameOver", player.score);
-
       await Player.findOneAndUpdate(
         { name: player.name },
         { $max: { score: player.score } },
         { upsert: true }
       );
-
       delete players[id];
       continue;
     }
 
-    // ===== GAME OVER: hit self =====
-    if (
-      player.snake.some(
-        (segment) => segment.x === head.x && segment.y === head.y
-      )
-    ) {
+    // Hit self
+    if (player.snake.some((s) => s.x === head.x && s.y === head.y)) {
       console.log(`💀 ${player.name} bit itself!`);
       io.to(id).emit("gameOver", player.score);
-
       await Player.findOneAndUpdate(
         { name: player.name },
         { $max: { score: player.score } },
         { upsert: true }
       );
-
       delete players[id];
       continue;
     }
 
-    // ===== GAME OVER: hit another player's body =====
+    // Hit another player
     let collided = false;
     for (const otherId in players) {
       if (otherId === id) continue;
       const other = players[otherId];
-      if (
-        other.snake.some(
-          (segment) => segment.x === head.x && segment.y === head.y
-        )
-      ) {
+      if (other.snake.some((s) => s.x === head.x && s.y === head.y)) {
         console.log(`💀 ${player.name} collided with ${other.name}!`);
         io.to(id).emit("gameOver", player.score);
-
         await Player.findOneAndUpdate(
           { name: player.name },
           { $max: { score: player.score } },
           { upsert: true }
         );
-
         delete players[id];
         collided = true;
         break;
@@ -124,7 +103,7 @@ setInterval(async () => {
     }
     if (collided) continue;
 
-    // Add new head
+    // Move snake
     player.snake.unshift(head);
 
     // Eat food
@@ -167,9 +146,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("keydown", (dir) => {
-    if (players[socket.id]) {
-      players[socket.id].dir = dir;
-    }
+    if (players[socket.id]) players[socket.id].dir = dir;
   });
 
   socket.on("disconnect", async () => {
@@ -194,11 +171,7 @@ if (process.env.NODE_ENV === "production") {
   });
 }
 
-// ===== Start Server =====
-const PORT = process.env.PORT || 4000;
-
-
-
+// ===== API Routes =====
 app.get("/", (req, res) => {
   res.send("API is running...");
 });
@@ -207,7 +180,7 @@ app.get("/api/leaderboard", async (req, res) => {
   try {
     const leaderboard = await Player.find().sort({ score: -1 }).limit(10);
     res.json(leaderboard);
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: "Failed to fetch leaderboard" });
   }
 });
@@ -221,8 +194,8 @@ app.get("/api/players", (req, res) => {
   res.json(activePlayers);
 });
 
+// ===== Start Server =====
+const PORT = process.env.PORT || 4000;
 server.listen(PORT, () =>
   console.log(`🚀 Server running on http://localhost:${PORT}`)
 );
-
-
